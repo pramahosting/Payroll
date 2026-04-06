@@ -65,10 +65,11 @@ function Nav() {
   ];
 
   return (
-    <nav style={{ background: '#1a1a2e', padding: '0 32px', display: 'flex', alignItems: 'center', gap: 0, height: 70 }}>
-      <span style={{ color: '#fff', fontWeight: 800, fontSize: 24, marginRight: 40, whiteSpace: 'nowrap' }}>
-        🦘 AU Payroll
-      </span>
+    <nav style={{ background: '#1a1a2e', padding: '0 32px', display: 'flex', alignItems: 'center', gap: 0, height: 110 }}>
+    <span style={{ display: 'flex', alignItems: 'center', gap: 14, marginRight: 40, whiteSpace: 'nowrap' }}>
+    <img src="/hs-logo.png" alt="HS" style={{ width: 60, height: 60, objectFit: 'contain', flexShrink: 0, border: 'none', background: 'transparent', filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.3))' }} />
+    <div style={{ color: '#0ef', fontWeight: 800, fontSize: '80px !important', lineHeight: 1, whiteSpace: 'nowrap' }}>Payroll System</div>
+    </span>
       <div style={{ display: 'flex', gap: 6, flex: 1 }}>
         {links.map(l => (
           <Link key={l.to} to={l.to} style={{
