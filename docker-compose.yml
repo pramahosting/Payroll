@@ -1,0 +1,258 @@
+services:
+
+  # ── Database ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: au-payroll-postgres
+    environment:
+      POSTGRES_USER: payroll
+      POSTGRES_PASSWORD: payroll123
+      POSTGRES_DB: payroll_main
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payroll -d employee_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: au-payroll-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Employee Service ──────────────────────────────────────────────────────
+  employee-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/employee-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/employee-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: employee-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/employee_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Timesheet Service ─────────────────────────────────────────────────────
+  timesheet-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/timesheet-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/timesheet-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: timesheet-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/timesheet_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Payroll Service ───────────────────────────────────────────────────────
+  payroll-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/payroll-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/payroll-service/main.py .
+        COPY services/payroll-service/tax_engine.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: payroll-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/payroll_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+      EMPLOYEE_SERVICE_URL: http://employee-service:8000
+      TIMESHEET_SERVICE_URL: http://timesheet-service:8000
+    ports:
+      - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Compliance Service ────────────────────────────────────────────────────
+  compliance-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/compliance-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/compliance-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: compliance-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/compliance_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+    ports:
+      - "8004:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Payments Service ──────────────────────────────────────────────────────
+  payments-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/payments-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/payments-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: payments-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/payments_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+    ports:
+      - "8005:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Reporting Service ─────────────────────────────────────────────────────
+  reporting-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/reporting-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/reporting-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: reporting-service
+    environment:
+      DATABASE_URL: postgresql://payroll:payroll123@postgres:5432/reporting_db
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+    ports:
+      - "8006:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Integration Service ───────────────────────────────────────────────────
+  integration-service:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY services/integration-service/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY services/integration-service/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: integration-service
+    environment:
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+      EMPLOYEE_SERVICE_URL: http://employee-service:8000
+      TIMESHEET_SERVICE_URL: http://timesheet-service:8000
+      PAYROLL_SERVICE_URL: http://payroll-service:8000
+      COMPLIANCE_SERVICE_URL: http://compliance-service:8000
+      PAYMENTS_SERVICE_URL: http://payments-service:8000
+      REPORTING_SERVICE_URL: http://reporting-service:8000
+    ports:
+      - "8007:8000"
+    depends_on:
+      - employee-service
+      - payroll-service
+    restart: unless-stopped
+
+  # ── API Gateway ───────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY shared /app/shared
+        COPY api-gateway/requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY api-gateway/main.py .
+        CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    container_name: api-gateway
+    environment:
+      JWT_SECRET_KEY: super-secret-jwt-key-change-in-production
+      EMPLOYEE_SERVICE_URL: http://employee-service:8000
+      TIMESHEET_SERVICE_URL: http://timesheet-service:8000
+      PAYROLL_SERVICE_URL: http://payroll-service:8000
+      COMPLIANCE_SERVICE_URL: http://compliance-service:8000
+      PAYMENTS_SERVICE_URL: http://payments-service:8000
+      REPORTING_SERVICE_URL: http://reporting-service:8000
+      INTEGRATION_SERVICE_URL: http://integration-service:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - employee-service
+      - timesheet-service
+      - payroll-service
+      - compliance-service
+      - payments-service
+      - reporting-service
+      - integration-service
+    restart: unless-stopped
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:18-alpine
+        WORKDIR /app
+        COPY frontend/package.json .
+        RUN npm install
+        COPY frontend/src ./src
+        COPY frontend/public ./public
+        EXPOSE 3000
+        ENV REACT_APP_API_URL=http://localhost:8000/api
+        CMD ["npm", "start"]
+    container_name: au-payroll-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

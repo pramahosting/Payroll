@@ -1,0 +1,11 @@
+tar -xzf au-payroll-platform.tar.gz
+cd au-payroll
+cp .env.example .env
+docker compose up --build
+
+# Seed admin (new terminal)
+curl -X POST http://localhost:8000/api/auth/seed-admin
+
+# Open frontend
+open http://localhost:3000
+# Login: admin@payroll.com.au / Admin1234!
